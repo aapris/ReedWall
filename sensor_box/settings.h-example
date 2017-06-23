@@ -1,0 +1,12 @@
+// Copy this file to name settings_left.h and edit it
+
+#define wifi_ssid "your_wifi_ssid"
+#define wifi_password "your_wifi_password"
+
+#define mqtt_server "172.24.1.1"
+#define mqtt_user "your_mqtt_username"
+#define mqtt_password "your_mqtt_password"
+#define mqtt_topic "left"
+
+// #define has_ssd1306
+
