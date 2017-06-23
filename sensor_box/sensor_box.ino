@@ -9,7 +9,7 @@
   - BH1750 lux sensor
   - ultrasonic distance sensor
   - PIR motion sensor
-  - SSD 1306 OLED display
+  - SSD1306 OLED display
 
 */
 
@@ -20,11 +20,13 @@
   char lux_topic[20] = "sensor/lft/lux";
   char pir_topic[20] = "sensor/lft/pir";
   char ultrasonic_topic[20] = "sensor/lft/usc";
+  char alive_topic[20] = "ping/lft";
 #else
   #include "settings_right.h"
   char lux_topic[20] = "sensor/rgt/lux";
   char pir_topic[20] = "sensor/rgt/pir";
   char ultrasonic_topic[20] = "sensor/rgt/usc";
+  char alive_topic[20] = "ping/rgt";
 #endif
 
 
@@ -58,7 +60,7 @@ float s_lux = 0;
 float s_dist = 0;
 float old_s_lux = 0;
 float old_s_dist = 0;
-
+unsigned long last_ping_time = 0;
 String clientId = "ESP8266Client-";
 
 void setup() {
@@ -72,9 +74,7 @@ void setup() {
   display.init();
   // display.flipScreenVertically();
   display_2row_text("Hello", "ReedWall!");
-  //display_3row_text("Connecting", "Wi-Fi SSID", wifi_ssid);
   setup_wifi();
-  //display_2row_text("Connecting", "broker...");
   client.setServer(mqtt_server, 1883);
   lightMeter.begin(BH1750_CONTINUOUS_LOW_RES_MODE);
   attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, CHANGE);
@@ -87,6 +87,10 @@ void loop() {
     reconnect();
   }
   client.loop();
+  if (millis() - last_ping_time > 10000) {
+    last_ping_time = millis();
+    client.publish(alive_topic, String(last_ping_time).c_str(), false);
+  }
   old_s_lux = s_lux;
   s_lux = lightMeter.readLightLevel();
   old_s_dist = s_dist;
@@ -101,7 +105,7 @@ void loop() {
   Serial.println(" cm");
   if (s_lux > 10 && has_changed_enough(old_s_lux, s_lux)) {
     display_3row_text("LUX", "changed", String(s_lux));
-    client.publish(lux_topic, String(s_lux).c_str(), true);
+    client.publish(lux_topic, String(s_lux).c_str(), false);
   }  
   if (s_dist > 10 && has_changed_enough(old_s_dist, s_dist)) {
     if  (s_dist < 30) {
@@ -109,17 +113,18 @@ void loop() {
     } else {
       display_3row_text("Distance", "changed", String(s_dist));
     }
-    client.publish(ultrasonic_topic, String(s_dist).c_str(), true);
+    client.publish(ultrasonic_topic, String(s_dist).c_str(), false);
   }
   if(interruptCounter>0){
  
       interruptCounter--;
       numberOfInterrupts++;
-      display_2row_text("Motion", "detected");
-      client.publish(pir_topic, String(state).c_str(), true);
+
+      client.publish(pir_topic, String(state).c_str(), false);
       Serial.print("Interrupt ");
       if (state == 1) {
         Serial.print(" RISING");
+        display_2row_text("Motion", "detected");
       } else {
         Serial.print("FALLING");
       }
