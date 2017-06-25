@@ -21,11 +21,12 @@ from mqttconfig import MQTT_SERVER_ADDR, MQTT_USERNAME, MQTT_PASSWORD
 from mqttconfig import LED_SERVER_ADDR
 
 i = 0
-effect_end = time.time()
+#effect_end = time.time()
+effect_end = 0
 
 # Play thunder a bit more rarely
 last_thunder = 0
-thunder_delay = 90  # seconds
+thunder_delay = 120  # seconds
 
 # Store audio files to a dict found in sys.argv[1] directory,
 # which must contain 4 wav files which are playable by simpleaudio
@@ -49,23 +50,39 @@ class baseThread(threading.Thread):
     def run(self):
         global basic_mode_running, audio_in_use
         basic_mode_running = True
+        play_obj = None
         print ("Starting ")
         set_color_and_mode('000000', 1)  # blink turns off all led for 0.5 secs
         set_color_and_mode('666633', 42, 25)  # fireworks
+        while audio_in_use:  # wait until other players release the sound
+            pass
+
         if audio_in_use:
-            print("ERROR: audio in use")
+            print("ERROR: audio in use in audio")
             return
         audio_in_use = True
         wave_obj = simpleaudio.WaveObject.from_wave_file(wav_files['030'])
-        play_obj = wave_obj.play()
-        while basic_mode_running and play_obj.is_playing():
-            time.sleep(0.01)
-        play_obj.stop()
-        play_obj.wait_done()
+        while basic_mode_running:
+            print("Play base")
+            # FIXME
+            # _simpleaudio.SimpleaudioError: Could not create playback thread. -- CODE: 11 -- MSG:
+            try:
+                play_obj = wave_obj.play()
+            except:
+                basic_mode_running = False
+                audio_in_use = False
+                del play_obj
+                del wave_obj
+            while play_obj.is_playing() and basic_mode_running:
+                time.sleep(0.01)
+        if play_obj:
+            play_obj.stop()
+            play_obj.wait_done()
+            del play_obj
+            del wave_obj
         audio_in_use = False
         basic_mode_running = False
-        del play_obj
-        del wave_obj
+        print(time.time())
 
 
 def check_args():
@@ -106,39 +123,42 @@ def on_message(client, userdata, msg):
 
     if sensor == 'lux' and float(msg_data) > 200:
         print("LUX")
-        if time.time() - effect_end < 10:
+        if time.time() - effect_end < 10:  # wait 10 sec after last effect
             return
         basic_mode_running = False
-        # time.sleep(2.1)
         while audio_in_use:  # wait until other players release the sound
             pass
         effect_raisingsun()
-        effect_silence(0.5)
+        # effect_silence(0.5)
 
         while audio_in_use:  # wait until other players release the sound
             pass
         effect_ripple()
-        effect_silence(0.5)
+        # effect_silence(0.5)
         return
 
     if box == 'rgt' and sensor == 'pir' and msg_data == '1':
-        print("PIR")
         if time.time() - last_thunder < thunder_delay:
             print("Not yet thunder")
             return
-        last_thunder = time.time()
+        if time.time() - effect_end < 10:  # wait 10 sec after last effect
+            print("Less than 10 sec")
+            return
+        print("PIR")
 
         basic_mode_running = False
         while audio_in_use:  # wait until other players release the sound
             pass
 
         effect_thunder(20.0)
+        last_thunder = time.time()
         # effect_silence(1)
         return
 
     if audio_in_use is False and basic_mode_running is False:
         print("BASE")
         bt = baseThread()
+        print(time.time())
         bt.start()  # Start base mode if nothing is running
 
 
@@ -157,13 +177,21 @@ def set_color_and_mode(color=None, mode=None, speed=None):
         requests.get(url_t)
 
 
-def get_random_time_or_max(_min, _max, endtime):
+def get_random_time_or_max(_min, _max):
+    """
+    """
+    t = random.random() * (_max - _min) + _min + time.time()
+    print(t)
+    return t
+
+
+def get_random_seconds_or_max(_min, _max, endtime):
     t = random.random() * (_max - _min) + _min
     now = time.time()
     # print(t)
     if t > endtime - now:
         t = endtime - now
-        print("time exceeded", endtime, now)
+        print("time exceeded", t, endtime, now)
     return t
 
 
@@ -181,30 +209,35 @@ def effect_thunder(length_sec):
     audio_in_use = True
     wave_obj = simpleaudio.WaveObject.from_wave_file(wav_files['010'])
     play_obj = wave_obj.play()
+    # Loop 3 different effects while play_obj is playing
     while play_obj.is_playing():
         set_color_and_mode('ffffcc', 25)  # strobe
-        t = get_random_time_or_max(0, 0.4, endtime)
-        if t <= 0:
-            break
-        time.sleep(t)
+        t = get_random_time_or_max(0, 0.4)
+        while t >= time.time():
+            if play_obj.is_playing() is False:  # Stop immediately when playing ends
+                break
+            time.sleep(0.01)
 
         set_color_and_mode('0d0e10', 0)  # static
-        t = get_random_time_or_max(0.5, 1.0, endtime)
-        if t <= 0:
-            break
-        time.sleep(t)
+        t = get_random_time_or_max(0.5, 1.0)
+        while t >= time.time():
+            if play_obj.is_playing() is False:
+                break
+            time.sleep(0.01)
 
         set_color_and_mode('d6d9dc', 20)  # sparkle
-        t = get_random_time_or_max(0.5, 2.5, endtime)
-        if t <= 0:
-            break
-        time.sleep(t)
+        t = get_random_time_or_max(0.5, 2.5)
+        while t >= time.time():
+            if play_obj.is_playing() is False:
+                break
+            time.sleep(0.01)
+
     play_obj.wait_done()
     play_obj.stop()
     audio_in_use = False
     # set_color_and_mode('0d0e10', 0)  # static
     set_color_and_mode('000000', 0)  # static
-    time.sleep(0.5)
+    # time.sleep(0.5)
     del play_obj
     del wave_obj
     effect_end = time.time()
@@ -219,7 +252,7 @@ def effect_ripple():
     audio_in_use = True
     wave_obj = simpleaudio.WaveObject.from_wave_file(wav_files['020'])
     play_obj = wave_obj.play()
-    # set_color_and_mode('f9f356', 11, 200)  # dualscan
+    # set_color_and_mode('ffc013', 11, 200)  # dualscan
     set_color_and_mode('fbf43e', 11, 200)  # dualscan
     play_obj.wait_done()
     play_obj.stop()
@@ -244,8 +277,8 @@ def effect_raisingsun():
     # set_color_and_mode('f9f356', 3, 50)
     play_obj.wait_done()
     play_obj.stop()
+    time.sleep(0.3)
     set_color_and_mode('000000', 0)
-    time.sleep(0.38)
     audio_in_use = False
     del play_obj
     del wave_obj
